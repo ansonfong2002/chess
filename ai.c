@@ -1,0 +1,199 @@
+#include "ai.h"
+//maps for each piece, used for position scoring
+double NMap[64] = { 0, 0.157, 0.157, 0.157, 0.157, 0.157,0.157, 0, 
+                    0.157, 0.337, 0.47, 0.47, 0.47, 0.47, 0.337, 0.157,
+                    0.157, 0.47, 0.67, 0.77, 0.77, 0.67, 0.47, 0.157, 
+                    0.157, 0.47, 0.77, 0.57, 0.57, 0.77, 0.47, 0.157, 
+                    0.157, 0.47, 0.77, 0.57, 0.57, 0.77, 0.47, 0.157,
+                    0.157, 0.47, 0.67, 0.77, 0.77, 0.67, 0.47, 0.157,
+                    0.157, 0.337, 0.47, 0.47, 0.47, 0.47, 0.337, 0.157,
+                    0, 0.157, 0.157, 0.157, 0.157, 0.157, 0.157, 0 };
+double QMap[64] = { 0.05, 0.35, 0.35, 0.05, 0.05, 0.35, 0.35, 0.05, 
+                    0.35, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.35, 
+                    0.35, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.35, 
+                    1.05, 0.55, 1.05, 0.05, 1.05, 1.05, 0.55, 1.05,
+                    1.05, 0.55, 1.05, 1.05, 1.05, 1.05, 0.55, 0.05,
+                    0.35, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.35,
+                    0.35, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.35,
+                    0.05, 0.35, 0.35, 1.05, 1.05, 0.35, 0.35, 0.05 };
+double RMap[64] = { 0, 0, 0.511, 0.511, 0.511, 0.511, 0, 0, 
+                    0.511, 0.511, 0.511, 0.511, 0.511, 0.511, 0.511, 0.511, 
+                    0.001, 0.311, 0.311, 0.311, 0.311, 0.311, 0.311, 0.001,
+                    0.001, 0.311, 0.311, 0.311, 0.311, 0.311, 0.311, 0.001,
+                    0.001, 0.211, 0.211, 0.311, 0.311, 0.211, 0.211, 0.001,
+                    0.001, 0.211, 0.211, 0.211, 0.211, 0.211, 0.211, 0.001,
+                    0.001, 0.001, 0.111, 0.111, 0.111, 0.111, 0.001, 0.001, 
+                    0, 0, 0.1, 0.41, 0.41, 0.1, 0, 0 };
+double BMap[64] = { 0, 0.16, 0.16, 0.166, 0.166, 0.16, 0.16, 0, 
+                    0.16, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26, 0.16,
+                    0.16, 0.26, 0.56, 0.86, 0.86, 0.56, 0.26, 0.16, 
+                    0.16, 0.56, 0.56, 0.86, 0.86, 0.56, 0.56, 0.16,
+                    0.16, 0.36, 1.06, 0.86, 0.86, 1.06, 0.36, 0.16,
+                    0.16, 0.66, 0.86, 0.86, 0.86, 0.86, 0.66, 0.16,
+                    0.16, 0.56, 0.86, 0.86, 0.86, 0.86, 0.56, 0.16, 
+                    0, 0.16, 0.46, 0.46, 0.46, 0.46, 0.16, 0 };
+double KMap[64] = { 0.22, 0.22, 0.23, 0, 0, 0.23, 0.23, 0.22, 
+                    0.22, 0.22, 0.23, 0, 0, 0.23, 0.23, 0.22,
+                    0.32, 0.22, 0.23, 0, 0, 0.23, 0.23, 0.32, 
+                    0.32, 0.32, 0.23, 0, 0, 0.23, 0.23, 0.32,
+                    0.32, 0.33, 0.33, 0.23, 0.23, 0.33, 0.33, 0.32,
+                    0.32, 0.33, 0.33, 0.23, 0.23, 0.33, 0.33, 0.32,
+                    0, 0, 0, 0, 0, 0, 0, 0,
+                    0.12, 0.89, 0.89, 0, 0, 0.89, 0.89, 0.12 };
+void addChild(children** childList, treeNode* newNode) {
+    children* newChild = (children*)malloc(sizeof(children));
+    newChild->nextChild = *childList;
+    *childList = newChild;
+    newChild->node = newNode;
+}
+void freeChildren(children* first) {
+    children* current = first;
+    while (current != NULL) {
+        children* next = current->nextChild;    // save next child pointer
+        freeNode(current->node);     // delete childNode
+        free(current);  // free current pointer
+        current = next; // iterate child pointer
+    }
+}
+treeNode* makeNode(treeNode* root, pieceNode* pieces, children* branches, int pos, int target, int player) {
+    treeNode* newNode = (treeNode*)malloc(sizeof(treeNode));
+    newNode->parent = root;
+    newNode->pieceList = pieces;
+    newNode->branches = branches;
+    newNode->score = (player == 1) ? -10000 : 10000;  // used to set score at node to ideal move given its children
+    newNode->info = (moveInfo){pos, target};
+    return newNode;
+}
+void freeNode(treeNode* node) {
+    if (node->branches == NULL) {
+        freePieces(node->pieceList);    // free pieceList at node
+        free(node); // free node itself
+        return;
+    }
+    freeChildren(node->branches);   // free children if not deepest node
+    if (node->parent != NULL) {freePieces(node->pieceList);}    // return from recursion, free pieceList at node if not root node
+    free(node); // free node itself
+}
+double grow(treeNode* root, int depth, int color, double alpha, double beta) {
+    if (depth == 0) {
+        root->score = eval(root->pieceList);
+        return root->score;   // recursion limit: return evaluation
+    }
+    /*  RECURSION:
+        - traverse tree until node with no children & still searchable depth.
+        - search for player's movable piece
+        - get piece initial index
+        - generate moves for piece
+        - iterate through moves, adding a treeNode to rootNode for each move by adding pointer to rootNode's 'children' list
+        - each treeNode needs:
+            - pointer to the rootNode
+            - pointer in rootNode's 'children' list
+            - pieceList generated by simulateMoves (new flags)
+            - moveInfo struct to log the move
+            - for each move on THAT board, generate moves + add children to THAT node using grow() with THAT node as ROOT, depth - 1
+    */  
+    int numMoves = 0;    // starts as 0: used to see if opponent has any responses at this node
+    double evaluation;
+    for (int i = 0; i < 32; i++) {
+        if (root->pieceList[i].player == color && root->pieceList[i].index) {
+            int pos = root->pieceList[i].index;   // index of moving piece
+            moveNode* moves = generateMoves(root->pieceList, i, 1);    // depth 1 = invalidate moves that discover checks (unrelated to tree depth)
+            while (moves != NULL) {
+                numMoves++;
+                moveNode* next = moves->nextNode;   // for freeing the current move once child is made
+                pieceNode* simBoard = simulateMove(pos, moves->target, root->pieceList);    // new board created using simulateMove
+                addChild(&(root->branches), makeNode(root, simBoard, NULL, pos, moves->target, toggle(color)));    // make new node and add it to root's child list
+                free(moves);    // free the move, it's served its purpose
+                // addChild points 'children' to new child. Use child as new root. Switch colors for next layer down (get opponent responses)
+                evaluation = grow(root->branches->node, depth - 1, toggle(color), alpha, beta);   // evaluation of child node
+                moves = next;   // return from recursion: go to the next possible move and add another child
+                if (color == 1) {
+                    root->score = (evaluation > root->score) ? evaluation : root->score;  // if child has move better than max, update max
+                    alpha = (evaluation > alpha) ? evaluation : alpha;    // if child has move better than alpha, update alpha
+                    if (beta <= alpha) {
+                        i = 32; // prune node
+                        break;  // break out of while and for loops: no more branches need consideration
+                    }
+                }
+                else {
+                    root->score = (evaluation < root->score) ? evaluation : root->score;  // if child has move better than min, update min
+                    beta = (evaluation < beta) ? evaluation : beta;   // if child has move better than beta, update beta
+                    if (beta <= alpha) {
+                        i = 32; // prune node                         
+                        break;  // break out of while and for loops: no more branches need consideration
+                    }
+                }
+            }
+            if (moves != NULL) {freeMoves(moves);}
+        }
+    }
+    if (numMoves == 0) {
+        root->score = (color == 1) ? -1000 - depth: 1000 + depth;   // the earlier the mate, the better the score. multiple ways to mate -> choose fastest one
+        root->score = (root->pieceList->flags->check == 1) ? root->score : -1 * root->score;
+    } // no moves: checkmate node! (white no moves = black checkmate...)
+    return root->score;    // white chooses max eval, black chooses min eval
+}
+treeNode* buildTree(pieceNode* initial, int depth, int firstMover, double* score) {
+    // put this code into AI control function. Use opening dictionary for first three moves, then insert below code for first AI turn
+    children* branches = NULL;
+    treeNode* rootNode = makeNode(NULL, initial, branches, 0, 0, firstMover);   // root node
+    *score = grow(rootNode, depth, firstMover, -10000, 10000);    // recursive tree build: alpha = small, beta = huge to start. Bias the firstmover
+    return rootNode;
+}
+double eval(pieceNode* pieceList) {
+    double white = (double)getMaterial(pieceList, 1);
+    double black = (double)getMaterial(pieceList, 2);
+    white *= 3;
+    black *= 3;
+    for (int i = 0; i < 32; i++) {
+        if (pieceList[i].player == 1) {white += scorePos(pieceList, i);}
+        else {black += scorePos(pieceList, i);}
+    }
+    return white - black;
+}
+double scorePos(pieceNode* pieceList, int i) {
+    if (!pieceList[i].index) {return 0;}  // captured pieces
+    int pos = pieceList[i].index, p = pieceList[i].player;  // store values
+    int d_offsets[] = {-13, -11, 11, 13};
+    double score = 0;
+    switch (pieceList[i].type) {
+        case PAWN:
+            if (p == 1) {
+                for (int i = 0; i < 2; i++) {
+                    // first two offset values
+                    int occupied = findPiece(pos + d_offsets[i], pieceList);
+                    if (occupied >= 0 && pieceList[occupied].player == p && pieceList[occupied].type == PAWN) {score += 0.25;}    // reward good pawn structure
+                }
+                score += 8/(double)((pos - (pos % 12))/12 - 1);
+            } else {
+                for (int i = 2; i < 4; i++) {
+                    // second two offset values
+                    int occupied = findPiece(pos + d_offsets[i], pieceList);
+                    if (occupied >= 0 && pieceList[occupied].player == p && pieceList[occupied].type == PAWN) {score += 0.25;}    // reward good pawn structure
+                }
+                score += 8/(double)(9 - ((pos - (pos % 12))/12 - 1));
+            }
+            break;
+        case KNIGHT:
+            if (p == 1) {score += NMap[map(pos)];}    // map 12x12 index to 8x8 index, get position score
+            else {score += NMap[63 - map(pos)];}
+            break;
+        case BISHOP:
+            if (p == 1) {score += BMap[map(pos)];}
+            else {score += BMap[63 - map(pos)];}
+            break;
+        case ROOK:
+            if (p == 1) {score += RMap[map(pos)];}
+            else {score += RMap[63 - map(pos)];}
+            break;
+        case QUEEN:
+            if (p == 1) {score += QMap[map(pos)];}
+            else {score += QMap[63 - map(pos)];}
+            break;
+        case KING:
+            if (p == 1) {score += KMap[map(pos)];}
+            else {score += KMap[63 - map(pos)];}
+            break;
+    }
+    return score;
+}
