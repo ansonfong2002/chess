@@ -5,6 +5,6 @@
   BUG: I know player moves doesn't show until the AI moves...just let it cook
 
 # Running
-  Developed in Linux, uses X11 forwarded graphics for Windows (use MobaX).  
+  Developed for use in Linux.  
   - Use command 'make testg' in directory
   AI only good enough to beat ~1200 chess.com bots so if you lose uhhhhhh...gg
